@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -43,10 +43,35 @@ jobs:
           ./gradlew --version
 
       - name: 编译
-        run: ./gradlew :app:assembleDebug --stacktrace --no-daemon
+        id: build
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          ./gradlew :app:assembleDebug --no-daemon 2>&1 | tee build-output.txt
+
+      # 未认证无法下载 Actions 日志，因此把错误摘要写进 commit 评论（公开仓库可匿名读取）
+      - name: 发布编译错误摘要
+        if: steps.build.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo '```'
+            grep -n -E '^e: |error:|Unresolved reference|Type mismatch|Only safe|What went wrong|Caused by:|> Task .* FAILED|Execution failed|FAILURE: Build failed|Could not (find|resolve)' build-output.txt | head -60 || true
+            echo ''
+            echo '--- 日志尾部 ---'
+            tail -c 6000 build-output.txt
+            echo '```'
+          } > comment-body.md
+          jq -Rs '{body: .}' comment-body.md > payload.json
+          curl -sS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/comments" \
+            -d @payload.json > /dev/null && echo "已发布错误摘要"
 
       - name: 上传 APK
-        if: success()
+        if: steps.build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: memo-reminder-debug-apk
@@ -54,11 +79,17 @@ jobs:
           if-no-files-found: warn
 
       - name: 失败时上传编译报告
-        if: failure()
+        if: steps.build.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
           name: build-reports
           path: |
+            build-output.txt
             app/build/reports/**
-            app/build/outputs/logs/**
           if-no-files-found: ignore
+
+      - name: 编译失败则以失败结束
+        if: steps.build.outcome == 'failure'
+        run: |
+          echo "编译失败，详情见本次提交的评论"
+          exit 1
