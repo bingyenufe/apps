@@ -1,18 +1,31 @@
-name: Android CI
+name: Reminder · Android CI
 
 on:
   push:
     branches: [ main, master ]
+    paths:
+      - 'reminder/**'
+      - '.github/workflows/reminder-android.yml'
   pull_request:
+    paths:
+      - 'reminder/**'
+      - '.github/workflows/reminder-android.yml'
   workflow_dispatch:
+
+concurrency:
+  group: reminder-android-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
 
 jobs:
   build:
-    name: 编译 debug APK
+    name: 编译 reminder debug APK
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: reminder
 
     steps:
       - name: 检出代码
@@ -26,6 +39,8 @@ jobs:
 
       - name: 配置 Gradle 缓存
         uses: gradle/actions/setup-gradle@v4
+        with:
+          build-root-directory: reminder
 
       - name: 确保 Android SDK 34 可用
         run: |
@@ -38,6 +53,7 @@ jobs:
 
       - name: 打印版本信息
         run: |
+          pwd
           java -version
           chmod +x ./gradlew
           ./gradlew --version
@@ -74,18 +90,18 @@ jobs:
         if: steps.build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: memo-reminder-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: reminder-debug-apk
+          path: reminder/app/build/outputs/apk/debug/*.apk
           if-no-files-found: warn
 
       - name: 失败时上传编译报告
         if: steps.build.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
-          name: build-reports
+          name: reminder-build-reports
           path: |
-            build-output.txt
-            app/build/reports/**
+            reminder/build-output.txt
+            reminder/app/build/reports/**
           if-no-files-found: ignore
 
       - name: 编译失败则以失败结束
