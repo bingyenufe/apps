@@ -57,4 +57,9 @@ class ReminderViewModel(
             scheduler.sync()
         }
     }
+
+    /** 「测试响铃」：1 分钟后响一次，用来验证「把应用划掉之后到点还响不响」。 */
+    fun scheduleTestAlarm() {
+        scheduler.scheduleTestAlarm()
+    }
 }

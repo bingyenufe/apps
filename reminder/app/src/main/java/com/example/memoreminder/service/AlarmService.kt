@@ -17,11 +17,15 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
 /**
  * 响铃期间的前台服务：循环播放系统默认闹钟音，并在通知栏常驻「关闭提醒」按钮，
  * 直到用户手动关闭（[AlarmReceiver.ACTION_STOP]）或记录被删除 / 改期。
+ *
+ * 响铃状态通过 [ringing] 暴露给界面，这样即使通知没显示（权限被拒），
+ * 应用内也能给出「关闭闹钟」按钮。
  */
 class AlarmService : Service() {
 
@@ -58,8 +62,8 @@ class AlarmService : Service() {
             }
 
             // 续响的循环闹钟会重复调用 onStartCommand，此时只刷新通知，不重启声音
-            if (activeCode != code) {
-                activeCode = code
+            if (ringing.value != code) {
+                ringing.value = code
                 startSound()
             }
         }
@@ -146,18 +150,17 @@ class AlarmService : Service() {
 
     override fun onDestroy() {
         stopSound()
-        activeCode = null
+        ringing.value = null
         scope.cancel()
         super.onDestroy()
     }
 
     companion object {
         /**
-         * 当前正在响铃的闹钟 code，供 [com.example.memoreminder.scheduler.AlarmScheduler]
-         * 判断记录被删除 / 改期时是否需要停止响铃。
+         * 当前正在响铃的闹钟 code，null 表示没有在响。
+         * 界面订阅它来显示「关闭闹钟」按钮；[com.example.memoreminder.scheduler.AlarmScheduler]
+         * 也用它判断记录被删除 / 改期时是否需要停止响铃。
          */
-        @Volatile
-        var activeCode: Int? = null
-            private set
+        val ringing = MutableStateFlow<Int?>(null)
     }
 }

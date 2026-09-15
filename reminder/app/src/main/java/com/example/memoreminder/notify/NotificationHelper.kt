@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
 import android.media.RingtoneManager
+import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.example.memoreminder.MainActivity
 import com.example.memoreminder.R
@@ -83,12 +84,21 @@ object NotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val title = if (reminders.size > 1) "备忘提醒（${reminders.size} 条）" else "备忘提醒"
-        val body = reminders.joinToString(separator = "\n") { reminder ->
-            "• ${reminder.text}（${TimeUtil.formatDateTime(reminder.eventTime)}）"
+        val isTest = reminders.isEmpty()
+        val title = when {
+            isTest -> "备忘提醒 · 测试响铃"
+            reminders.size > 1 -> "备忘提醒（${reminders.size} 条）"
+            else -> "备忘提醒"
+        }
+        val body = if (isTest) {
+            "这是一次测试响铃。点下面的「关闭提醒」或打开应用点「关闭闹钟」即可停止。"
+        } else {
+            reminders.joinToString(separator = "\n") { reminder ->
+                "• ${reminder.text}（${TimeUtil.formatDateTime(reminder.eventTime)}）"
+            }
         }
 
-        return NotificationCompat.Builder(context, CHANNEL_ALARMS)
+        val builder = NotificationCompat.Builder(context, CHANNEL_ALARMS)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(body)
@@ -102,6 +112,18 @@ object NotificationHelper {
             .setOngoing(ongoing)
             // 前台服务自己循环播放闹钟音，通知就不再重复响一次
             .setSilent(silent)
-            .build()
+
+        // 息屏 / 锁屏时直接弹出应用界面，保证一定有「关闭」入口
+        if (canUseFullScreenIntent(context)) {
+            builder.setFullScreenIntent(contentIntent, true)
+        }
+
+        return builder.build()
+    }
+
+    private fun canUseFullScreenIntent(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return true
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return false
+        return manager.canUseFullScreenIntent()
     }
 }

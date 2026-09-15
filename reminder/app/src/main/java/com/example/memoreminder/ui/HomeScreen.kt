@@ -3,10 +3,14 @@
 package com.example.memoreminder.ui
 
 import android.app.AlarmManager
+import android.app.NotificationManager
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -31,6 +35,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -53,6 +58,8 @@ import androidx.compose.ui.unit.sp
 import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.memoreminder.data.Reminder
+import com.example.memoreminder.scheduler.AlarmReceiver
+import com.example.memoreminder.service.AlarmService
 import com.example.memoreminder.util.TimeUtil
 import com.example.memoreminder.viewmodel.ReminderViewModel
 import java.time.LocalDate
@@ -60,11 +67,39 @@ import java.time.LocalDate
 @Composable
 fun HomeScreen(viewModel: ReminderViewModel) {
     val reminders by viewModel.reminders.collectAsStateWithLifecycle()
+    val ringingCode by AlarmService.ringing.collectAsStateWithLifecycle()
+    val context = LocalContext.current
 
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var showEditor by remember { mutableStateOf(false) }
     var editingId by remember { mutableStateOf<Long?>(null) }
     var pendingDelete by remember { mutableStateOf<Reminder?>(null) }
+
+    BackHandler(enabled = showEditor) { showEditor = false }
+
+    // 编辑页必须是独立整屏：不能和主页在同一个 composition 里同时渲染，否则两个界面会叠在一起
+    if (showEditor) {
+        val editing = editingId?.let { id -> reminders.firstOrNull { it.id == id } }
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background
+        ) {
+            EditRecordScreen(
+                existing = editing,
+                onDone = { text, eventTime, customAlarmTime ->
+                    val id = editing?.id
+                    if (id != null) {
+                        viewModel.update(id, text, eventTime, customAlarmTime)
+                    } else {
+                        viewModel.add(text, eventTime, customAlarmTime)
+                    }
+                    showEditor = false
+                },
+                onCancel = { showEditor = false }
+            )
+        }
+        return
+    }
 
     val now = System.currentTimeMillis()
     val today = LocalDate.now()
@@ -76,7 +111,21 @@ fun HomeScreen(viewModel: ReminderViewModel) {
     val historyItems = reminders.filter { it.eventTime <= now }.sortedByDescending { it.eventTime }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("备忘提醒") }) },
+        topBar = {
+            TopAppBar(
+                title = { Text("备忘提醒") },
+                actions = {
+                    TextButton(onClick = {
+                        viewModel.scheduleTestAlarm()
+                        Toast.makeText(
+                            context,
+                            "1 分钟后响铃。可以把应用从后台划掉，验证关掉应用后还响不响",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }) { Text("测试响铃") }
+                }
+            )
+        },
         floatingActionButton = {
             FloatingActionButton(onClick = {
                 editingId = null
@@ -91,6 +140,7 @@ fun HomeScreen(viewModel: ReminderViewModel) {
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
+            RingingCard(ringingCode) { code -> stopRinging(context, code) }
             PermissionBanners()
 
             TabRow(selectedTabIndex = selectedTab) {
@@ -137,23 +187,6 @@ fun HomeScreen(viewModel: ReminderViewModel) {
         }
     }
 
-    if (showEditor) {
-        val editing = editingId?.let { id -> reminders.firstOrNull { it.id == id } }
-        EditRecordScreen(
-            existing = editing,
-            onDone = { text, eventTime, customAlarmTime ->
-                val id = editing?.id
-                if (id != null) {
-                    viewModel.update(id, text, eventTime, customAlarmTime)
-                } else {
-                    viewModel.add(text, eventTime, customAlarmTime)
-                }
-                showEditor = false
-            },
-            onCancel = { showEditor = false }
-        )
-    }
-
     pendingDelete?.let { reminder ->
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
@@ -169,6 +202,40 @@ fun HomeScreen(viewModel: ReminderViewModel) {
                 TextButton(onClick = { pendingDelete = null }) { Text("取消") }
             }
         )
+    }
+}
+
+/** 让闹钟停下来：通知栏按钮和界面按钮走的是同一条路。 */
+private fun stopRinging(context: Context, code: Int) {
+    context.sendBroadcast(
+        Intent(context, AlarmReceiver::class.java)
+            .setAction(AlarmReceiver.ACTION_STOP)
+            .putExtra(AlarmReceiver.EXTRA_CODE, code)
+    )
+}
+
+@Composable
+private fun RingingCard(code: Int?, onStop: (Int) -> Unit) {
+    if (code == null) return
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("闹钟正在响", fontWeight = FontWeight.Bold)
+                Text("点右边按钮停止", style = MaterialTheme.typography.bodySmall)
+            }
+            Button(onClick = { onStop(code) }) { Text("关闭闹钟") }
+        }
     }
 }
 
@@ -252,11 +319,33 @@ private fun PermissionBanners() {
     val notificationsDisabled = remember {
         !NotificationManagerCompat.from(context).areNotificationsEnabled()
     }
+    val fullScreenBlocked = remember {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            context.getSystemService(NotificationManager::class.java)?.canUseFullScreenIntent() == false
+        } else {
+            false
+        }
+    }
+
+    if (notificationsDisabled) {
+        Banner(
+            text = "通知权限没开：到点不会提醒，也没有「关闭提醒」按钮。必须打开。",
+            actionText = "去开启",
+            onAction = {
+                runCatching {
+                    context.startActivity(
+                        Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                            .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                    )
+                }
+            }
+        )
+    }
 
     if (needsExactAlarm) {
         Banner(
-            text = "需要允许「闹钟和提醒」权限，闹钟才能准点响",
-            actionText = "去设置",
+            text = "「闹钟和提醒」权限没开，闹钟可能不准点。",
+            actionText = "去开启",
             onAction = {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     runCatching {
@@ -271,16 +360,19 @@ private fun PermissionBanners() {
         )
     }
 
-    if (notificationsDisabled) {
+    if (fullScreenBlocked) {
         Banner(
-            text = "通知权限未开启，到点将无法提醒",
-            actionText = "去设置",
+            text = "锁屏时无法弹出响铃界面，建议开启「全屏通知」。",
+            actionText = "去开启",
             onAction = {
-                runCatching {
-                    context.startActivity(
-                        Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                            .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
-                    )
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    runCatching {
+                        context.startActivity(
+                            Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT).setData(
+                                Uri.parse("package:${context.packageName}")
+                            )
+                        )
+                    }
                 }
             }
         )
@@ -292,7 +384,7 @@ private fun Banner(text: String, actionText: String, onAction: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = 12.dp, vertical = 6.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
     ) {
         Row(

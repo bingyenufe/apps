@@ -37,6 +37,7 @@ class AlarmReceiver : BroadcastReceiver() {
         val code = intent.getIntExtra(EXTRA_CODE, 0)
         val moment = intent.getLongExtra(EXTRA_MOMENT, 0L)
         val ids = intent.getLongArrayExtra(EXTRA_IDS) ?: LongArray(0)
+        val isTest = intent.getBooleanExtra(EXTRA_TEST, false)
         if (code == 0) return
 
         val wakeLock = context.getSystemService(PowerManager::class.java)
@@ -53,7 +54,8 @@ class AlarmReceiver : BroadcastReceiver() {
                     val reminder = dao.byId(id)
                     if (reminder != null) reminders.add(reminder)
                 }
-                if (reminders.isEmpty()) return@launch
+                // 记录已被删除就不要再响；「测试响铃」本来就没有对应记录
+                if (reminders.isEmpty() && !isTest) return@launch
 
                 startRinging(context, code, moment, ids, reminders)
                 scheduleLoop(context, code, moment, ids)
@@ -98,9 +100,11 @@ class AlarmReceiver : BroadcastReceiver() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         AlarmScheduler.setExact(
+            context,
             alarmManager,
             System.currentTimeMillis() + AlarmScheduler.LOOP_INTERVAL_MS,
-            pendingIntent
+            pendingIntent,
+            asAlarmClock = false
         )
     }
 
@@ -126,5 +130,6 @@ class AlarmReceiver : BroadcastReceiver() {
         const val EXTRA_CODE = "code"
         const val EXTRA_MOMENT = "moment"
         const val EXTRA_IDS = "ids"
+        const val EXTRA_TEST = "test"
     }
 }

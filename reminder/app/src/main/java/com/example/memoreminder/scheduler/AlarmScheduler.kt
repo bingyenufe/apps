@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import com.example.memoreminder.MainActivity
 import com.example.memoreminder.data.Reminder
 import com.example.memoreminder.data.ReminderDao
 import com.example.memoreminder.service.AlarmService
@@ -17,6 +18,7 @@ import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.LocalDate
+import java.time.LocalTime
 
 /**
  * 闹钟对齐器。
@@ -26,7 +28,7 @@ import java.time.LocalDate
  * - 若设置了自定义提醒时间，则额外响一次（两个时间都会响）。
  * - 同一时刻的多条记录合并成一次闹钟，通知里逐条列出。
  *
- * [sync] 是幂等的：先取消所有旧闹钟，再按当前数据库内容重新排布未来的闹钟。
+ * [sync] 是幂等的：先取消旧闹钟，再按当前数据库内容重新排布未来的闹钟。
  */
 class AlarmScheduler(
     private val context: Context,
@@ -103,6 +105,29 @@ class AlarmScheduler(
         }
     }
 
+    /**
+     * 「测试响铃」：默认 1 分钟后响一次，不写数据库。
+     * 用来验证「把应用划掉之后到点还响不响」——这是国产 ROM 上最容易出问题的地方。
+     */
+    fun scheduleTestAlarm(delayMillis: Long = DEFAULT_TEST_DELAY_MS) {
+        scope.launch {
+            val alarmManager = context.getSystemService(AlarmManager::class.java) ?: return@launch
+            val triggerAt = System.currentTimeMillis() + delayMillis
+            val intent = Intent(context, AlarmReceiver::class.java)
+                .setAction(AlarmReceiver.ACTION_FIRE)
+                .putExtra(AlarmReceiver.EXTRA_CODE, TEST_CODE)
+                .putExtra(AlarmReceiver.EXTRA_MOMENT, triggerAt)
+                .putExtra(AlarmReceiver.EXTRA_TEST, true)
+            val pendingIntent = PendingIntent.getBroadcast(
+                context,
+                TEST_CODE,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            setExact(context, alarmManager, triggerAt, pendingIntent, asAlarmClock = true)
+        }
+    }
+
     private fun scheduleAlarm(moment: Long, code: Int, reminderIds: List<Long>) {
         val alarmManager = context.getSystemService(AlarmManager::class.java) ?: return
         val intent = Intent(context, AlarmReceiver::class.java)
@@ -116,7 +141,7 @@ class AlarmScheduler(
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        setExact(alarmManager, moment, pendingIntent)
+        setExact(context, alarmManager, moment, pendingIntent, asAlarmClock = true)
     }
 
     private fun cancelPending(action: String, code: Int) {
@@ -130,7 +155,7 @@ class AlarmScheduler(
     }
 
     private fun stopRinging(code: Int) {
-        if (AlarmService.activeCode == code) {
+        if (AlarmService.ringing.value == code) {
             context.stopService(Intent(context, AlarmService::class.java))
         }
         context.getSystemService(NotificationManager::class.java)?.cancel(code)
@@ -159,6 +184,8 @@ class AlarmScheduler(
         const val DEFAULT_ALARM_HOUR = 21
         const val LOOP_INTERVAL_MS = 3L * 60L * 1000L
         const val LOOP_CODE_OFFSET = 3_000_000
+        const val TEST_CODE = 9_999
+        private const val DEFAULT_TEST_DELAY_MS = 60_000L
 
         private const val PREFS = "alarm_scheduler"
         private const val KEY_SCHEDULED = "scheduled"
@@ -169,7 +196,7 @@ class AlarmScheduler(
         fun defaultAlarmMoment(reminder: Reminder): Long? {
             val eventDay = TimeUtil.localDateOf(reminder.eventTime)
             if (!eventDay.isAfter(LocalDate.now())) return null
-            return TimeUtil.toMillis(eventDay.minusDays(1), java.time.LocalTime.of(DEFAULT_ALARM_HOUR, 0))
+            return TimeUtil.toMillis(eventDay.minusDays(1), LocalTime.of(DEFAULT_ALARM_HOUR, 0))
         }
 
         /** 一条记录需要触发的所有提醒时刻（默认 + 自定义，去重）。 */
@@ -180,14 +207,44 @@ class AlarmScheduler(
             return moments.distinct()
         }
 
-        /** 精确闹钟；个别机型禁用精确闹钟时退化为「尽量准时」。 */
-        fun setExact(alarmManager: AlarmManager, triggerAtMillis: Long, pendingIntent: PendingIntent) {
-            val canExact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarmManager.canScheduleExactAlarms()
-            if (canExact) {
-                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
-            } else {
+        /**
+         * 精确闹钟。
+         *
+         * 优先用 [AlarmManager.setAlarmClock]：它是最强的闹钟 API —— 不受 Doze 影响、
+         * 系统会在状态栏显示闹钟图标、系统做后台清理时也最不容易被清掉（时钟类应用都用它）。
+         * 没有精确闹钟权限时退化为「尽量准时」。
+         */
+        fun setExact(
+            context: Context,
+            alarmManager: AlarmManager,
+            triggerAtMillis: Long,
+            pendingIntent: PendingIntent,
+            asAlarmClock: Boolean = false
+        ) {
+            val canExact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+                alarmManager.canScheduleExactAlarms()
+            if (!canExact) {
                 alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+                return
             }
+
+            if (asAlarmClock) {
+                val showIntent = PendingIntent.getActivity(
+                    context,
+                    0,
+                    Intent(context, MainActivity::class.java),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                val ok = runCatching {
+                    alarmManager.setAlarmClock(
+                        AlarmManager.AlarmClockInfo(triggerAtMillis, showIntent),
+                        pendingIntent
+                    )
+                }.isSuccess
+                if (ok) return
+            }
+
+            alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
         }
     }
 }

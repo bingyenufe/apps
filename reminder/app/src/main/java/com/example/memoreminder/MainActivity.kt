@@ -30,6 +30,12 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // 响铃时即使锁屏也要能弹出界面，保证一定有「关闭」入口
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        }
+
         val dao = ReminderDatabase.get(applicationContext).reminders()
         scheduler = AlarmScheduler(applicationContext, dao)
         scheduler.sync()
