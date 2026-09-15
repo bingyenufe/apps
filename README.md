@@ -52,22 +52,31 @@ app/src/main/java/com/example/memoreminder/
 
 1. Android Studio → `Open`，选择本目录 `D:\D2\study\dsh\reminder`。
 2. 等待 Gradle Sync 完成（首次会下载 Gradle 8.10.2 与依赖，需要联网）。
-   - 若提示缺少 Gradle wrapper，直接在 SDK Manager 里装好 **Android SDK Platform 34** 与 **Build-Tools 34**，然后重新 Sync 即可（IDE 会按 `gradle/wrapper/gradle-wrapper.properties` 指定的版本下载 Gradle）。
 3. 手机开「开发者选项 → USB 调试」，连上电脑。
 4. 点 ▶ Run 安装到手机；或 `Build → Build APK(s)` 生成 `app/build/outputs/apk/debug/app-debug.apk`，传到手机安装。
 
 ### 方式二：命令行
 
-本仓库只带了 `gradle-wrapper.properties`（没有 wrapper jar）。如果本机装了 Gradle 8.10.2：
+本工程自带 Gradle wrapper，**不需要单独安装 Gradle**（首次运行会自动下载 8.10.2）。本机只需要 **JDK 17** 和 **Android SDK（platform 34 + build-tools 34.0.0）**：
 
 ```powershell
-# 在项目根目录
+# 在项目根目录：告诉 Gradle SDK 在哪
 echo "sdk.dir=C\:\\Users\\你的用户名\\AppData\\Local\\Android\\Sdk" > local.properties
-gradle wrapper --gradle-version 8.10.2   # 生成 gradlew（可选）
-gradle :app:assembleDebug
+.\gradlew :app:assembleDebug
 ```
 
 APK 输出在 `app/build/outputs/apk/debug/app-debug.apk`。
+
+### 方式三：GitHub Actions（本机什么都不用装）
+
+仓库自带 `.github/workflows/android.yml`：推送到 `main` 就自动编译，成功后把 APK 作为 artifact 上传。
+
+1. 仓库 **Actions** 页 → 打开最新一次绿色的 `Android CI`
+2. 页面底部 **Artifacts** → 下载 `memo-reminder-debug-apk`（约 9 MB）
+3. 解压得到 `app-debug.apk`，传到手机安装（debug 签名，可直接安装）
+4. 也可以点 `Run workflow` 手动触发
+
+编译失败时，工作流会自动把错误摘要写进该次提交的评论里，方便直接看到失败原因。
 
 ## 首次使用
 
