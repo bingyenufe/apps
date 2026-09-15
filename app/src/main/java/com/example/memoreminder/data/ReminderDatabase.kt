@@ -1,0 +1,26 @@
+package com.example.memoreminder.data
+
+import android.content.Context
+import androidx.room.Database
+import androidx.room.Room
+import androidx.room.RoomDatabase
+
+@Database(entities = [Reminder::class], version = 1, exportSchema = false)
+abstract class ReminderDatabase : RoomDatabase() {
+
+    abstract fun reminders(): ReminderDao
+
+    companion object {
+        @Volatile
+        private var instance: ReminderDatabase? = null
+
+        fun get(context: Context): ReminderDatabase =
+            instance ?: synchronized(this) {
+                instance ?: Room.databaseBuilder(
+                    context.applicationContext,
+                    ReminderDatabase::class.java,
+                    "memo_reminder.db"
+                ).build().also { instance = it }
+            }
+    }
+}
