@@ -69,7 +69,17 @@ APK 输出在 `app/build/outputs/apk/debug/app-debug.apk`。
 
 ### 方式三：GitHub Actions（本机什么都不用装）
 
-仓库根目录自带 `.github/workflows/reminder-android.yml`：推送到 `main`（且 `reminder/` 有改动）就自动编译，成功后把 APK 作为 artifact 上传。
+仓库根目录自带 `.github/workflows/reminder-android.yml`：推送到 `main`（且 `reminder/` 有改动）就自动编译，成功后会自动发布 APK。
+
+**最省事的下载方式（免登录直链）：**
+
+```
+https://github.com/bingyenufe/apps/releases/download/reminder-latest/reminder-debug.apk
+```
+
+手机浏览器直接打开就能下载安装。每次重新构建都会覆盖这个文件，链接始终有效。
+
+**或者从 Actions artifact 下载：**
 
 1. 仓库 **Actions** 页 → 打开最新一次绿色的 `Reminder · Android CI`
 2. 页面底部 **Artifacts** → 下载 `reminder-debug-apk`（约 9 MB）

@@ -2,9 +2,9 @@
 
 我的个人 App 合集。每个 App 一个独立子目录，各自带独立的构建配置和 CI workflow。
 
-| 目录 | 应用 | 技术栈 | 状态 |
+| 目录 | 应用 | 技术栈 | 下载 APK |
 | --- | --- | --- | --- |
-| [`reminder/`](./reminder) | **备忘提醒**：记事本 + 闹钟，事件前一天 21:00 提醒 | Android · Kotlin · Jetpack Compose · Room | 编译通过，APK 见 Actions |
+| [`reminder/`](./reminder) | **备忘提醒**：记事本 + 闹钟，事件前一天 21:00 提醒 | Android · Kotlin · Jetpack Compose · Room | [reminder-debug.apk](https://github.com/bingyenufe/apps/releases/download/reminder-latest/reminder-debug.apk) |
 | （待添加） | | | |
 
 ## 目录约定
@@ -40,5 +40,5 @@ apps/
 
 - 推送到 `main` 自动触发，但只在该 App 自己的文件有改动时才跑（`paths` 过滤）
 - 也可以到 Actions 页手动 `Run workflow`
-- 编译成功：APK 作为 artifact 上传，在 Actions 页底部下载
+- 编译成功：APK 既作为 artifact 上传（Actions 页底部，需登录+解压），也会自动发布到 **Releases**（免登录直链下载）
 - 编译失败：错误摘要会自动写进该次提交的评论里，方便直接看到原因
