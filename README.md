@@ -81,7 +81,7 @@ APK 输出在 `app/build/outputs/apk/debug/app-debug.apk`。
 | --- | --- |
 | `POST_NOTIFICATIONS` | 弹提醒通知（Android 13+ 需授权） |
 | `USE_EXACT_ALARM` | 准点响铃（闹钟类应用权限，安装即生效）；Android 12 用 `SCHEDULE_EXACT_ALARM` |
-| `FOREGROUND_SERVICE` + `..._MEDIA_PROCESSING` | 响铃期间在前台循环播放闹钟音 |
+| `FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_MEDIA_PLAYBACK` | 响铃期间在前台循环播放闹钟音 |
 | `WAKE_LOCK` | 闹钟触发瞬间唤醒 CPU，保证能读写数据库、发出通知 |
 | `RECEIVE_BOOT_COMPLETED` | 开机/应用更新后重新排好闹钟 |
 

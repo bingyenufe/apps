@@ -13,7 +13,8 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROCESSING" />
+    <!-- 响铃期间持续播放闹钟音，使用 mediaPlayback 类型（API 29+，API 34 起需要该权限） -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
     <application
         android:allowBackup="true"
@@ -37,7 +38,7 @@
         <service
             android:name=".service.AlarmService"
             android:exported="false"
-            android:foregroundServiceType="mediaProcessing" />
+            android:foregroundServiceType="mediaPlayback" />
 
         <!-- 闹钟触发 / 循环续响 / 用户关闭 -->
         <receiver
