@@ -48,7 +48,11 @@ class AlarmReceiver : BroadcastReceiver() {
             try {
                 val dao = ReminderDatabase.get(context).reminders()
                 if (ids.isNotEmpty()) dao.markFired(ids)
-                val reminders = ids.mapNotNull { dao.byId(it) }
+                val reminders = ArrayList<Reminder>(ids.size)
+                for (id in ids) {
+                    val reminder = dao.byId(id)
+                    if (reminder != null) reminders.add(reminder)
+                }
                 if (reminders.isEmpty()) return@launch
 
                 startRinging(context, code, moment, ids, reminders)

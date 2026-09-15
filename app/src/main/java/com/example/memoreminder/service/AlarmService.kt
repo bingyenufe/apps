@@ -69,7 +69,12 @@ class AlarmService : Service() {
     private suspend fun loadReminders(ids: LongArray): List<Reminder> {
         if (ids.isEmpty()) return emptyList()
         val dao = ReminderDatabase.get(this).reminders()
-        return ids.mapNotNull { dao.byId(it) }
+        val reminders = ArrayList<Reminder>(ids.size)
+        for (id in ids) {
+            val reminder = dao.byId(id)
+            if (reminder != null) reminders.add(reminder)
+        }
+        return reminders
     }
 
     private fun startSound() {
